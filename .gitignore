@@ -2,4 +2,9 @@
 *.pyc
 
 models/
-images/*_detection.png
+images/*_detection.png*.pt
+runs/
+__pycache__/
+*_detections.png
+*_detections.jpg
+*_tracked.mp4
