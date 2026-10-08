@@ -55,6 +55,34 @@ python -m sky.finetune data/sky_aircraft.yaml --imgsz 1280 --epochs 100
 python -m sky.detect clip.mp4 --weights runs/sky/train/weights/best.pt --tile 1280
 ```
 
+### Results on real airborne footage (AOT)
+
+`sky/prepare_aot.py` builds 640 px native-resolution crops from the
+[Airborne Object Tracking](https://registry.opendata.aws/airborne-object-tracking/) dataset (part 1),
+split by flight. Trained for 12 epochs from `yolo11n.pt` on CPU (1,548 crops, 1,357 aircraft) and scored with
+`sky/evaluate.py` on 287 crops / 260 aircraft from held-out flights. A hit is a prediction centre within
+max(8 px, half the box) of an airplane, helicopter or drone; hits on birds and unidentified objects are ignored.
+
+| | COCO `yolo11n` | Fine-tuned, single frame | Fine-tuned, 3 stacked frames |
+|---|---|---|---|
+| Average precision | 0.11 | 0.55 | **0.58** |
+| Precision / recall at best F1 | 52% / 12% | 58% / 57% | **70% / 58%** |
+| Recall, sky background | 17% | 75% | 74% |
+| Recall, ground background | 2% | 28% | 30% |
+| Recall, targets < 10 px | 0% | 26% | 28% |
+
+The temporal model sees frames t-2, t, t+2 aligned and stacked as channels (`sky/temporal.py`); at the
+same recall it makes about 40% fewer false detections. Single training run each, so small differences
+(a few points of recall in a subgroup) are within noise.
+
+```bash
+curl -o groundtruth.csv https://airborne-obj-detection-challenge-training.s3.amazonaws.com/part1/ImageSets/groundtruth.csv
+python -m sky.prepare_aot groundtruth.csv data/aot --train 1500 --val 400
+python -m sky.finetune data/aot/temporal.yaml --temporal --imgsz 640 --epochs 50
+python -m sky.evaluate runs/sky/train/weights/best.pt data/aot/temporal --meta data/aot/meta.json
+python -m sky.detect clip.mp4 --weights runs/sky/train/weights/best.pt --temporal 2 --tile 640
+```
+
 ## Original PlanesNet detector (legacy)
 
 The original TensorFlow 1 / TFLearn scripts (`model.py`, `train.py`, `detector.py`) are kept below for
