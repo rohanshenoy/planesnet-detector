@@ -64,3 +64,16 @@ def test_cut_by_tile_edge_only_flags_interior_edges():
     assert cut_by_tile_edge(boxes, 0, 0, 640, 640, 1000, 1000).tolist() == [False, True, False]
     # last tile (360, 360): its right/bottom edges are the image edges
     assert not cut_by_tile_edge([[500, 500, 640, 640]], 360, 360, 640, 640, 1000, 1000)[0]
+
+
+def test_centre_distance_matching_and_ap():
+    from sky.evaluate import average_precision, match_image
+    gts = [(0, 100, 100, 6, 6), (1, 300, 300, 20, 10), (2, 500, 500, 6, 6)]  # plane, heli, bird
+    preds = [(0.9, 103, 101), (0.8, 100, 100), (0.7, 505, 500), (0.6, 900, 900), (0.5, 306, 302)]
+    records, hit = match_image(preds, gts)
+    # 0.9 hits the plane, 0.8 is a duplicate (FP), bird hit is ignored, 0.6 FP, 0.5 hits heli
+    assert records == [(0.9, True), (0.8, False), (0.6, False), (0.5, True)]
+    assert hit == [0.9, 0.5, None]
+    s = average_precision(records, n_gt=2)
+    assert s['max_recall'] == 1.0
+    assert s['ap'] == pytest.approx(0.5 * 1.0 + 0.5 * 0.5)

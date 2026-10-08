@@ -36,12 +36,21 @@ def main(argv=None):
     p.add_argument('--batch', type=int, default=8)
     p.add_argument('--device', default=None)
     p.add_argument('--project', default='runs/sky')
+    p.add_argument('--name', default='train')
+    p.add_argument('--workers', type=int, default=4)
+    p.add_argument('--close-mosaic', type=int, default=10, help='final epochs without mosaic')
+    p.add_argument('--temporal', action='store_true',
+                   help='images are prepare_aot temporal stacks: disable hue/saturation '
+                        'jitter, which would scramble the time channels')
     a = p.parse_args(argv)
 
     from ultralytics import YOLO
     model = YOLO(a.weights)
+    colour = dict(hsv_h=0.0, hsv_s=0.0) if a.temporal else {}
     return model.train(data=a.data, epochs=a.epochs, imgsz=a.imgsz, batch=a.batch,
-                       device=a.device, project=a.project,
+                       device=a.device, project=a.project, name=a.name, workers=a.workers,
+                       close_mosaic=a.close_mosaic,
+                       **colour,
                        # sky has no canonical "up" for distant aircraft; keep scale jitter mild
                        # so tiny targets are not shrunk out of existence
                        fliplr=0.5, flipud=0.2, degrees=10, scale=0.3, mosaic=1.0)

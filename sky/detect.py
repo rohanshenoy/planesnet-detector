@@ -225,6 +225,8 @@ def run_image(model, path, classes, a):
 
 def run_video(model, path, classes, a):
     import cv2
+    from collections import deque
+    from . import temporal
     cap = cv2.VideoCapture(path)
     if not cap.isOpened():
         raise FileNotFoundError(path)
@@ -233,20 +235,28 @@ def run_video(model, path, classes, a):
     out = a.out or os.path.splitext(path)[0] + '_tracked.mp4'
     writer = cv2.VideoWriter(out, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
     tracker = Tracker(a.min_hits, a.max_misses, min_straight=a.min_straight)
+    k = a.temporal or 0
+    buf = deque(maxlen=2 * k + 1)  # frames t-k .. t+k; frame t is buf[k]
     i = 0
     while True:
         ok, frame = cap.read()
         if not ok:
             break
-        boxes, scores = detect_frame(model, frame, classes, a.conf, a.tile, a.overlap, a.imgsz)
+        buf.append(frame)
+        if len(buf) < buf.maxlen:
+            continue
+        cur = buf[k]
+        inp = temporal.stack(buf[0], cur, buf[-1]) if k else cur
+        boxes, scores = detect_frame(model, inp, classes, a.conf, a.tile, a.overlap, a.imgsz)
         live = tracker.update(boxes, scores, i)
-        writer.write(_draw(frame, [t.boxes[-1] for t in live], ['#%d' % t.id for t in live]))
+        writer.write(_draw(cur.copy(), [t.boxes[-1] for t in live], ['#%d' % t.id for t in live]))
         i += 1
     cap.release()
     writer.release()
     tracks = tracker.confirmed_tracks()
     print('%d frames, %d confirmed aircraft tracks -> %s' % (i, len(tracks), out))
-    return [{'id': t.id, 'first_frame': t.frames[0], 'last_frame': t.frames[-1],
+    # frame numbers are those of the source video
+    return [{'id': t.id, 'first_frame': t.frames[0] + k, 'last_frame': t.frames[-1] + k,
              'hits': len(t.frames), 'mean_score': float(np.mean(t.scores)),
              'straightness': round(t.straightness(), 3),
              'path': [[round(float(x), 1), round(float(y), 1)] for x, y in t.centres]}
@@ -265,6 +275,9 @@ def main(argv=None):
     p.add_argument('--min-hits', type=int, default=5, help='frames before a track is reported')
     p.add_argument('--max-misses', type=int, default=5, help='frames a track may go undetected')
     p.add_argument('--min-straight', type=float, default=0.7)
+    p.add_argument('--temporal', type=int, metavar='K',
+                   help='video only: feed frames t-K, t, t+K stacked (use with a model '
+                        'trained on prepare_aot temporal/ data)')
     p.add_argument('--out')
     p.add_argument('--json')
     a = p.parse_args(argv)
