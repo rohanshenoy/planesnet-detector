@@ -19,9 +19,9 @@ in flight, against cloud, sea and ground clutter. In one day we rebuilt it in Py
 Everything is on branch `claude/fervent-pascal-x2ge7z` of `rohanshenoy/planesnet-detector`: 16 tests, about 2,100
 lines, with a `CLAUDE.md` guide and this report in `docs/`. We also built a real test of aircraft in flight seen
 from orbit (19 Sentinel-2 aircraft), where the satellite model finds 9 of 19, and scored the tracker on full video
-clips, where an offline tracking pass cuts false alarms by 42% at no real cost in recall. Two architecture
-experiments (a fine-detail detection layer and a larger model) were still training when this report was written;
-their sections say so.
+clips, where an offline tracking pass cuts false alarms by 42% at no real cost in recall. Of two architecture
+experiments, the larger `yolo11s` backbone raised average precision further to 0.63; an extra fine-detail detection
+layer was worse after 12 epochs, too few for its untrained layers to catch up.
 
 ## Starting point
 
@@ -126,7 +126,7 @@ which is what lets the network slide across a whole scene in one pass.
 | `yolo11n` fine-tuned | 2.62 M | 1 frame | 8, 16, 32 | Trained and evaluated |
 | `yolo11n` fine-tuned, temporal | 2.62 M | 3 frames | 8, 16, 32 | Trained and evaluated |
 | `yolo11n-p2`, temporal | 2.74 M | 3 frames | **4**, 8, 16, 32 | Trained and evaluated |
-| `yolo11s`, temporal | 9.46 M | 3 frames | 8, 16, 32 | Training |
+| `yolo11s`, temporal | 9.46 M | 3 frames | 8, 16, 32 | Trained and evaluated |
 
 **Temporal input.** AOT is greyscale, so the three colour channels are free. We fill them with frames t−2, t and
 t+2. Each neighbour is first aligned to frame t by phase correlation, to cancel the camera's own motion, and
@@ -164,8 +164,9 @@ than the aircraft-only scores in Results.
 
 The satellite run converged smoothly: training loss fell from 0.43 to 0.037 over 20 epochs, and held-out PlanesNet
 AUC rose from 0.976 to 0.998. The fine-detail (P2) run started much higher (validation loss 24.5 at epoch 1, as its new
-layers are untrained) and ended at 7.5, still falling about 0.1 to 0.4 per epoch. The `yolo11s` curve will be added
-when that run finishes.
+layers are untrained) and ended at 7.5, still falling about 0.1 to 0.4 per epoch. The `yolo11s` run was interrupted by a container
+restart after epoch 10 and resumed from its checkpoint for the last 2 epochs. Its validation loss fell from 7.1 to 4.6
+(with one unstable spike at epoch 2), the lowest of all runs, and its validation mAP50 ended at 0.276, the highest.
 
 ## Results
 
@@ -196,11 +197,21 @@ threshold with the best F1 score.
   training run.
 - Aircraft against ground clutter (30%) and under 10 px (28%) remain the weak spots.
 
-**Fine-detail layer (P2), same recipe:** average precision 0.41, precision / recall 56% / 44%, recall 58% on sky, 21%
-on ground, 12% under 10 px. At 12 epochs it is worse than plain `yolo11n` everywhere, including the tiny targets it
-was built for. This is not a verdict on the layer: about half its weights started untrained, and its validation loss
-was still falling steeply (7.5 at epoch 12, against 5.1 for `yolo11n`). Comparing the two needs the longer GPU run.
-The `yolo11s` row will be added when its training finishes.
+**Larger and finer models, same 3-frame data and recipe:**
+
+| Model | Average precision | Precision / recall at best F1 | Recall, sky background | Recall, ground background | Recall, targets under 10 px |
+| --- | --- | --- | --- | --- | --- |
+| `yolo11n`, 3 frames (from the table above) | 0.58 | 70% / 58% | 74% | 30% | 28% |
+| `yolo11s`, 3 frames (3.6× parameters) | **0.63** | **76% / 54%** | 67% | **33%** | 26% |
+| `yolo11n-p2`, 3 frames (extra 4 px layer) | 0.41 | 56% / 44% | 58% | 21% | 12% |
+
+- **The larger backbone ranks aircraft better** (average precision 0.63 against 0.58) and reaches 76% maximum recall
+  against 72%. Its best F1 is the same as `yolo11n`'s (0.63), reached at higher precision and slightly lower recall,
+  so the per-group recalls move with the operating point: better on ground, worse on sky. It is also the only model
+  whose validation mAP50 was still rising sharply at the last epoch (0.229 to 0.276).
+- **The fine-detail layer is worse everywhere at 12 epochs**, including the tiny targets it was built for. This is not
+  a verdict on the layer: about half its weights started untrained, and its validation loss was still falling steeply
+  (7.5 at epoch 12, against 5.1 for `yolo11n`). Comparing them needs the longer GPU run.
 
 ### Tracker on full video clips
 
