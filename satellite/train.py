@@ -52,10 +52,12 @@ def evaluate(model, loader, device):
             'recall': float(tp / max((l == 1).sum(), 1))}
 
 
-def synthetic_eval_set(cutouts, n, backgrounds, seed=1234):
+def synthetic_eval_set(cutouts, n, backgrounds, textures=None, seed=1234):
     """Fixed in-flight validation set built from held-out aircraft cut-outs."""
     empty = np.zeros((0, 20, 20, 3), np.uint8)
     ds = data.ChipDataset(empty, np.zeros(0, np.int64), cutouts, n, backgrounds, seed=seed)
+    if textures is not None:
+        ds.textures = textures
     items = [ds[i] for i in range(len(ds))]
     return torch.utils.data.TensorDataset(torch.stack([x for x, _ in items]),
                                           torch.stack([y for _, y in items]))
@@ -109,7 +111,7 @@ def main(argv=None):
 
     val = {'planesnet': loader(data.ChipDataset(Xva, yva, augment_real=False))}
     if val_cut[0]:
-        val['synthetic_airborne'] = loader(synthetic_eval_set(val_cut, max(2000, len(Xva) // 2), bank))
+        val['synthetic_airborne'] = loader(synthetic_eval_set(val_cut, max(2000, len(Xva) // 2), bank, Xva[yva == 0]))
     if a.airborne_val:
         Xv, yv = data.load_chip_folder(a.airborne_val)
         val['real_airborne'] = loader(data.ChipDataset(Xv, yv, augment_real=False))

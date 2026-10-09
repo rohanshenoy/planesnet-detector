@@ -64,18 +64,22 @@ def random_background(rng, size=CHIP, kind=None):
     return np.clip(rgb, 0, 1).astype(np.float32)
 
 
-def plane_mask(chip, thresh=0.12, min_px=6, max_px=250):
+def plane_mask(chip, thresh=0.12, min_px=6, max_px=250, noise_k=1.2):
     """Estimate a soft alpha mask for the aircraft in a centred PlanesNet chip.
 
-    The local background is taken as the median of the chip border; pixels
-    that differ from it by more than thresh are foreground, and only the
-    connected component closest to the centre is kept. Returns None when no
-    clean single aircraft can be isolated.
+    The local background is taken as the median of the chip border. A pixel
+    is foreground when it differs from that background by more than both
+    thresh and noise_k times the border's own typical deviation, so textured
+    tarmac is not swallowed into the mask. Thin attachments are removed by a
+    morphological opening and only the connected component closest to the
+    centre is kept. Returns None when no clean single aircraft is found.
     """
     border = np.concatenate([chip[0], chip[-1], chip[:, 0], chip[:, -1]])
     bg = np.median(border, axis=0)
+    border_dev = np.linalg.norm(border - bg, axis=-1)
+    level = max(thresh, noise_k * float(np.median(border_dev)))
     diff = np.linalg.norm(chip - bg, axis=-1)
-    fg = diff > thresh
+    fg = ndimage.binary_opening(diff > level, structure=np.ones((2, 2)))
     labels, n = ndimage.label(fg)
     if n == 0:
         return None
@@ -167,6 +171,29 @@ def airborne_positive(plane_chip, alpha, rng, background=None):
     img = composite(plane, alpha, bg, shift)
     if rng.random() < 0.25:
         img = add_contrail(img, rng, behind=rng.uniform(0, 2 * np.pi))
+    return photometric(geometric(img, rng), rng)
+
+
+def random_blob(rng, size=CHIP, min_px=30, max_px=160):
+    """A centred, irregular blob mask with roughly aircraft-sized area."""
+    n = fractal_noise(size, rng, octaves=3)
+    yy, xx = np.mgrid[:size, :size]
+    r = np.hypot(yy - size / 2 + 0.5, xx - size / 2 + 0.5) / (size / 2)
+    field = n - 2 * r
+    area = rng.uniform(min_px, max_px)
+    m = field >= np.quantile(field, 1 - area / size ** 2)
+    return np.clip(ndimage.gaussian_filter(m.astype(np.float32), 0.6) * 1.5, 0, 1)
+
+
+def airborne_distractor(texture_chip, rng, background=None):
+    """Hard negative: a blob of real ground texture pasted onto an airborne background.
+
+    Aircraft cut-outs from PlanesNet carry a little tarmac around their edges.
+    Without these negatives a model could learn "ground texture on cloud means
+    aircraft"; with them it has to rely on the aircraft's shape.
+    """
+    bg = background if background is not None else random_background(rng)
+    img = composite(texture_chip, random_blob(rng), bg)
     return photometric(geometric(img, rng), rng)
 
 

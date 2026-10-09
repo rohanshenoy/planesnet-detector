@@ -120,3 +120,13 @@ def test_checkpoint_roundtrip(tmp_path):
     x = torch.rand(2, 3, 20, 20)
     with torch.no_grad():
         assert torch.allclose(m(x), m2(x))
+
+
+def test_distractor_negatives_are_valid():
+    rng = np.random.default_rng(6)
+    tex = np.full((20, 20, 3), 0.45, np.float32)
+    for _ in range(10):
+        m = augment.random_blob(rng)
+        assert m[10, 10] > 0.5 and m[0, 0] < 0.5
+        im = augment.airborne_distractor(tex, rng)
+        assert im.shape == (20, 20, 3) and 0 <= im.min() and im.max() <= 1

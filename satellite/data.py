@@ -88,7 +88,8 @@ class ChipDataset(Dataset):
     """Real chips plus n_synthetic on-the-fly synthetic in-flight samples.
 
     Synthetic samples are half positives (a real aircraft cut-out composited
-    onto an airborne background) and half hard negatives (background only).
+    onto an airborne background) and half hard negatives (background only, or
+    a blob of real ground texture pasted onto the background).
     """
 
     def __init__(self, X, y, cutouts=None, n_synthetic=0, backgrounds=None,
@@ -98,6 +99,7 @@ class ChipDataset(Dataset):
         self.n_synthetic = n_synthetic if self.planes else 0
         self.backgrounds = backgrounds
         self.augment_real = augment_real
+        self.textures = X[y == 0] if len(X) else X  # ground texture for distractor negatives
         self.rng = np.random.default_rng(seed)
 
     def __len__(self):
@@ -122,6 +124,10 @@ class ChipDataset(Dataset):
             img = augment.airborne_positive(self.planes[k], self.alphas[k], rng,
                                             self._background())
             label = 1
+        elif len(self.textures) and rng.random() < 0.3:
+            tex = self.textures[rng.integers(len(self.textures))].astype(np.float32) / 255.
+            img = augment.airborne_distractor(tex, rng, self._background())
+            label = 0
         else:
             img = augment.airborne_negative(rng, self._background())
             label = 0
