@@ -77,3 +77,21 @@ def test_centre_distance_matching_and_ap():
     s = average_precision(records, n_gt=2)
     assert s['max_recall'] == 1.0
     assert s['ap'] == pytest.approx(0.5 * 1.0 + 0.5 * 0.5)
+
+
+def test_clip_outputs_raw_online_offline():
+    from sky.evaluate_clips import outputs, score
+    dets, gts = {}, {}
+    for f in range(10):
+        b = [box(100 + 5 * f, 100)]           # aircraft, every frame
+        s = [0.9]
+        if f == 4:
+            b.append(box(400, 400)); s.append(0.8)   # one-frame false alarm
+        dets[f] = (np.array(b, np.float32), np.array(s, np.float32))
+        gts[f] = [(0, 100 + 5 * f, 100, 12, 12)]
+    out = outputs(dets, threshold=0.5, min_hits=3, max_misses=2)
+    raw, online, offline = (score(out[k], gts) for k in ('raw', 'online', 'offline'))
+    assert raw['recall'] == 1.0 and raw['false_alarms_per_frame'] == pytest.approx(0.1)
+    assert online['recall'] == pytest.approx(0.8)      # frames 0-1 wait for confirmation
+    assert online['false_alarms_per_frame'] == 0
+    assert offline['recall'] == 1.0 and offline['precision'] == 1.0
