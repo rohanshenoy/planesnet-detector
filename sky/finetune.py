@@ -29,7 +29,10 @@ import argparse
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('data', help='dataset YAML')
-    p.add_argument('--weights', default='yolo11n.pt', help='starting weights')
+    p.add_argument('--weights', default='yolo11n.pt',
+                   help='starting weights (.pt) or a model config (.yaml), e.g. '
+                        'sky/models/yolo11n-p2.yaml for an extra small-object head')
+    p.add_argument('--pretrained', help='with a .yaml model: copy matching layers from these weights')
     p.add_argument('--epochs', type=int, default=100)
     p.add_argument('--imgsz', type=int, default=1280,
                    help='train at high resolution so distant aircraft keep their pixels')
@@ -46,6 +49,8 @@ def main(argv=None):
 
     from ultralytics import YOLO
     model = YOLO(a.weights)
+    if a.pretrained:
+        model = model.load(a.pretrained)
     colour = dict(hsv_h=0.0, hsv_s=0.0) if a.temporal else {}
     return model.train(data=a.data, epochs=a.epochs, imgsz=a.imgsz, batch=a.batch,
                        device=a.device, project=a.project, name=a.name, workers=a.workers,
