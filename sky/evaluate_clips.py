@@ -101,20 +101,25 @@ def run_model(model, classes, paths, start, length, k, tile, conf):
 
 
 def outputs(dets, threshold, min_hits, max_misses):
-    """raw / online / offline detections per frame, as (score, cx, cy) lists."""
+    """raw / online / offline detections per frame, as (score, cx, cy) lists.
+
+    offline keeps every detection of any track that was confirmed at some
+    frame, including the frames before its confirmation.
+    """
     tracker = Tracker(min_hits=min_hits, max_misses=max_misses)
-    raw, online, members = {}, {}, {}
+    raw, online, ever = {}, {}, {}
     for f in sorted(dets):
         boxes, scores = dets[f]
         keep = scores >= threshold
         b, s = boxes[keep], scores[keep]
         raw[f] = [(float(si), (bi[0] + bi[2]) / 2, (bi[1] + bi[3]) / 2) for bi, si in zip(b, s)]
         live = tracker.update(b, s, f)
+        for t in live:
+            ever[t.id] = t
         online[f] = [(t.scores[-1], (t.boxes[-1][0] + t.boxes[-1][2]) / 2,
                       (t.boxes[-1][1] + t.boxes[-1][3]) / 2) for t in live]
-    confirmed = tracker.confirmed_tracks()
     offline = {f: [] for f in dets}
-    for t in confirmed:
+    for t in ever.values():
         for f, bx, sc in zip(t.frames, t.boxes, t.scores):
             offline[f].append((sc, (bx[0] + bx[2]) / 2, (bx[1] + bx[3]) / 2))
     return {'raw': raw, 'online': online, 'offline': offline}
@@ -185,7 +190,15 @@ def main(argv=None):
         pooled = {'raw': {}, 'online': {}, 'offline': {}}
         pooled_gt = {}
         for ci, (fid, start) in enumerate(clips):
-            dets = run_model(model, classes, frames[(fid, start)], start, a.length, k, a.tile, conf=min(thr, 0.05))
+            cache = os.path.join(a.cache, 'dets_%s_%s_%d.npz' % (name, fid[:12], start))
+            if os.path.exists(cache):
+                z = np.load(cache)
+                dets = {int(f): (z['b%d' % int(f)], z['s%d' % int(f)]) for f in z['frames']}
+            else:
+                dets = run_model(model, classes, frames[(fid, start)], start, a.length, k, a.tile, conf=min(thr, 0.05))
+                np.savez(cache, frames=np.array(sorted(dets)),
+                         **{'b%d' % f: np.asarray(v[0], np.float32).reshape(-1, 4) for f, v in dets.items()},
+                         **{'s%d' % f: np.asarray(v[1], np.float32) for f, v in dets.items()})
             outs = outputs(dets, thr, a.min_hits, a.max_misses)
             for kind in pooled:
                 for f, preds in outs[kind].items():
