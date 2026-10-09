@@ -125,8 +125,8 @@ which is what lets the network slide across a whole scene in one pass.
 | `yolo11n`, COCO weights (baseline) | 2.62 M | 1 frame | 8, 16, 32 | Evaluated, no training |
 | `yolo11n` fine-tuned | 2.62 M | 1 frame | 8, 16, 32 | Trained and evaluated |
 | `yolo11n` fine-tuned, temporal | 2.62 M | 3 frames | 8, 16, 32 | Trained and evaluated |
-| `yolo11n-p2`, temporal | 2.74 M | 3 frames | **4**, 8, 16, 32 | Training |
-| `yolo11s`, temporal | 9.46 M | 3 frames | 8, 16, 32 | Queued |
+| `yolo11n-p2`, temporal | 2.74 M | 3 frames | **4**, 8, 16, 32 | Trained and evaluated |
+| `yolo11s`, temporal | 9.46 M | 3 frames | 8, 16, 32 | Training |
 
 **Temporal input.** AOT is greyscale, so the three colour channels are free. We fill them with frames t−2, t and
 t+2. Each neighbour is first aligned to frame t by phase correlation, to cancel the camera's own motion, and
@@ -163,7 +163,9 @@ than the aircraft-only scores in Results.
 | Augmentation | Mosaic (off for the last 3 epochs), flips, ±10° rotation, ±30% scale; hue and saturation off for 3-frame input | 90° rotations, flips, haze, blur, brightness, noise; synthetic in-flight samples each epoch |
 
 The satellite run converged smoothly: training loss fell from 0.43 to 0.037 over 20 epochs, and held-out PlanesNet
-AUC rose from 0.976 to 0.998. The fine-detail (P2) and `yolo11s` curves will be added when those runs finish.
+AUC rose from 0.976 to 0.998. The fine-detail (P2) run started much higher (validation loss 24.5 at epoch 1, as its new
+layers are untrained) and ended at 7.5, still falling about 0.1 to 0.4 per epoch. The `yolo11s` curve will be added
+when that run finishes.
 
 ## Results
 
@@ -194,7 +196,11 @@ threshold with the best F1 score.
   training run.
 - Aircraft against ground clutter (30%) and under 10 px (28%) remain the weak spots.
 
-The fine-detail (P2) and `yolo11s` rows will be added when their training finishes.
+**Fine-detail layer (P2), same recipe:** average precision 0.41, precision / recall 56% / 44%, recall 58% on sky, 21%
+on ground, 12% under 10 px. At 12 epochs it is worse than plain `yolo11n` everywhere, including the tiny targets it
+was built for. This is not a verdict on the layer: about half its weights started untrained, and its validation loss
+was still falling steeply (7.5 at epoch 12, against 5.1 for `yolo11n`). Comparing the two needs the longer GPU run.
+The `yolo11s` row will be added when its training finishes.
 
 ### Tracker on full video clips
 
