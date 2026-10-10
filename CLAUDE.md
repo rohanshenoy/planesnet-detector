@@ -44,7 +44,7 @@ python -m sky.detect clip.mp4 --weights best.pt --temporal 2 --tile 640
 | `sky/evaluate.py` | Crop-level scoring with centre-distance matching |
 | `sky/evaluate_clips.py` | Clip-level scoring of raw vs tracker-confirmed detections on full frames |
 | `sky/detect.py` | Image/video inference: tiling, tile-edge de-duplication, `Tracker` (multi-frame confirmation) |
-| `report_figs/` | Figures used in `docs/report.md` |
+| `report_figs/` | Figures used in `docs/report.md` (made by one-off scripts that are not in the repo) |
 
 ## Conventions that matter
 

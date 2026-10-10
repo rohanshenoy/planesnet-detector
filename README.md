@@ -59,21 +59,23 @@ python -m sky.detect clip.mp4 --weights runs/sky/train/weights/best.pt --tile 12
 
 `sky/prepare_aot.py` builds 640 px native-resolution crops from the
 [Airborne Object Tracking](https://registry.opendata.aws/airborne-object-tracking/) dataset (part 1),
-split by flight. Trained for 12 epochs from `yolo11n.pt` on CPU (1,548 crops, 1,357 aircraft) and scored with
+split by flight. Trained for 12 epochs from COCO weights on CPU (1,548 crops, 1,357 aircraft) and scored with
 `sky/evaluate.py` on 287 crops / 260 aircraft from held-out flights. A hit is a prediction centre within
 max(8 px, half the box) of an airplane, helicopter or drone; hits on birds and unidentified objects are ignored.
 
-| | COCO `yolo11n` | Fine-tuned, single frame | Fine-tuned, 3 stacked frames |
-|---|---|---|---|
-| Average precision | 0.11 | 0.55 | **0.58** |
-| Precision / recall at best F1 | 52% / 12% | 58% / 57% | **70% / 58%** |
-| Recall, sky background | 17% | 75% | 74% |
-| Recall, ground background | 2% | 28% | 30% |
-| Recall, targets < 10 px | 0% | 26% | 28% |
+| | COCO `yolo11n` | `yolo11n`, single frame | `yolo11n`, 3 stacked frames | `yolo11s`, 3 stacked frames |
+|---|---|---|---|---|
+| Average precision | 0.11 | 0.55 | 0.58 | **0.63** |
+| Precision / recall at best F1 | 52% / 12% | 58% / 57% | 70% / 58% | **76% / 54%** |
+| Recall, sky background | 17% | **75%** | 74% | 67% |
+| Recall, ground background | 2% | 28% | 30% | **33%** |
+| Recall, targets < 10 px | 0% | 26% | **28%** | 26% |
 
 The temporal model sees frames t-2, t, t+2 aligned and stacked as channels (`sky/temporal.py`); at the
-same recall it makes about 40% fewer false detections. Single training run each, so small differences
-(a few points of recall in a subgroup) are within noise.
+same recall it makes about 40% fewer false detections. The larger `yolo11s` ranks aircraft best; its subgroup
+recalls are read at a higher-precision operating point, so they trade sky for ground. Single training run each,
+so small differences (a few points of recall in a subgroup) are within noise. `docs/report.md` also covers the
+stride-4 head experiment (`sky/models/yolo11-p2.yaml`, undertrained at 12 epochs) and full-frame tracking results.
 
 ```bash
 curl -o groundtruth.csv https://airborne-obj-detection-challenge-training.s3.amazonaws.com/part1/ImageSets/groundtruth.csv

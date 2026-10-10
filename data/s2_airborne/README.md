@@ -14,3 +14,6 @@ A small, hand-labelled test set of aircraft seen from orbit, used by `python -m 
   reflectance / 0.3. `labels.csv` keeps scene id, pixel position in the read window, and the blue/red copy positions.
 
 Small by design (19 positives): treat every metric from it as having wide error bars.
+
+The scene search and candidate-finder script that produced these chips was not committed and is not in the
+repo; the steps above are the record of how the set was built. `satellite/evaluate_s2.py` only reads the chips.
