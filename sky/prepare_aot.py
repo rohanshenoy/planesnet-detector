@@ -33,9 +33,12 @@ Example:
 import argparse
 import csv
 import hashlib
+import http.client
 import json
 import os
 import re
+import time
+import urllib.error
 import urllib.request
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -116,10 +119,20 @@ def image_url(part, flight, img_name):
     return '%s/%s/Images/%s/%s' % (BUCKET, part, flight, img_name)
 
 
-def fetch(part, flight, img_name):
+def fetch(part, flight, img_name, retries=3, backoff=2.0):
+    """Download one frame. Retries connection resets and timeouts; a missing frame (HTTP 404) fails at once."""
     url = image_url(part, flight, img_name)
-    with urllib.request.urlopen(url, timeout=60) as r:
-        buf = np.frombuffer(r.read(), np.uint8)
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=60) as r:
+                buf = np.frombuffer(r.read(), np.uint8)
+            break
+        except urllib.error.HTTPError:
+            raise
+        except (OSError, http.client.HTTPException):  # URLError, timeouts and resets are OSErrors
+            if attempt == retries:
+                raise
+            time.sleep(backoff * 2 ** attempt)
     img = cv2.imdecode(buf, cv2.IMREAD_GRAYSCALE)
     if img is None:
         raise IOError('could not decode %s' % url)

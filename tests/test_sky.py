@@ -120,3 +120,30 @@ def test_split_is_stable_across_parts_and_exclusion(tmp_path):
     p = tmp_path / 'gt.csv'
     p.write_text(',time,flight_id,img_name,frame,id\n0,1,f1,a.png,1,\n1,2,f2,b.png,1,\n2,3,f1,c.png,2,\n')
     assert flight_ids(str(p)) == {'f1', 'f2'}
+
+
+def test_fetch_retries_transient_errors_but_not_missing_frames(monkeypatch):
+    import io
+    import urllib.error
+    import cv2
+    from sky import prepare_aot
+    png = cv2.imencode('.png', np.full((4, 6), 7, np.uint8))[1].tobytes()
+    calls = []
+
+    def flaky(url, timeout):
+        calls.append(url)
+        if len(calls) < 3:
+            raise ConnectionResetError(54, 'Connection reset by peer')
+        return io.BytesIO(png)
+    monkeypatch.setattr(prepare_aot.urllib.request, 'urlopen', flaky)
+    monkeypatch.setattr(prepare_aot.time, 'sleep', lambda s: None)
+    assert prepare_aot.fetch('part1', 'fl', 'a.png').shape == (4, 6) and len(calls) == 3
+
+    def missing(url, timeout):
+        calls.append(url)
+        raise urllib.error.HTTPError(url, 404, 'Not Found', {}, None)
+    calls.clear()
+    monkeypatch.setattr(prepare_aot.urllib.request, 'urlopen', missing)
+    with pytest.raises(urllib.error.HTTPError):
+        prepare_aot.fetch('part1', 'fl', 'a.png')
+    assert len(calls) == 1
