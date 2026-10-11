@@ -95,3 +95,28 @@ def test_clip_outputs_raw_online_offline():
     assert online['recall'] == pytest.approx(0.8)      # frames 0-1 wait for confirmation
     assert online['false_alarms_per_frame'] == 0
     assert offline['recall'] == 1.0 and offline['precision'] == 1.0
+
+
+def test_prepare_aot_reads_any_part_and_part2_column_order(tmp_path):
+    from sky.prepare_aot import image_url, load_groundtruth
+    assert image_url('part2', 'abc', 'f.png').endswith('/part2/Images/abc/f.png')
+    # part2's groundtruth.csv orders its columns differently and spells one bird 'BIrd'
+    csv_path = tmp_path / 'gt.csv'
+    csv_path.write_text(
+        ',time,id,flight_id,img_name,frame,range_distance_m,is_above_horizon,size_width,size_height,'
+        'gt_left,gt_top,gt_right,gt_bottom\n'
+        '0,1,Airplane1,fl,a.png,3,900.0,1.0,2448,2048,10,20,16,26\n'
+        '1,1,BIrd2,fl,a.png,3,50.0,-1.0,2448,2048,100,200,104,204\n')
+    fl = load_groundtruth(str(csv_path))['fl']
+    assert fl['frames'] == {3: 'a.png'}
+    assert [o['cls'] for o in fl['objects'][3]] == [0, 2]
+
+
+def test_split_is_stable_across_parts_and_exclusion(tmp_path):
+    from sky.prepare_aot import flight_ids, split_of
+    # the split is a hash of the flight id alone, so a flight shared by two parts keeps its side
+    val = sum(split_of('%032x' % (i * 7919), 0.2) == 'val' for i in range(2000))
+    assert 300 < val < 500
+    p = tmp_path / 'gt.csv'
+    p.write_text(',time,flight_id,img_name,frame,id\n0,1,f1,a.png,1,\n1,2,f2,b.png,1,\n2,3,f1,c.png,2,\n')
+    assert flight_ids(str(p)) == {'f1', 'f2'}

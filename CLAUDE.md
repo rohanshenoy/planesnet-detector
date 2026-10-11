@@ -22,6 +22,7 @@ python -m satellite.detect models/plane.pt scene.png [--references other_dates.p
 # Sky
 curl -o groundtruth.csv https://airborne-obj-detection-challenge-training.s3.amazonaws.com/part1/ImageSets/groundtruth.csv
 python -m sky.prepare_aot groundtruth.csv data/aot --train 1500 --val 400      # writes data/aot/{single,temporal}
+python -m sky.prepare_aot part2.csv data/aot_part2 --part part2 --train 0 --val 1500 --val-fraction 1   # test set
 python -m sky.finetune data/aot/temporal.yaml --temporal --imgsz 640 --epochs 50
 python -m sky.evaluate runs/sky/train/weights/best.pt data/aot/temporal --meta data/aot/meta.json
 python -m sky.evaluate_clips groundtruth.csv data/aot_clips --model temporal=best.pt:0.18:2
@@ -53,6 +54,9 @@ python -m sky.detect clip.mp4 --weights best.pt --temporal 2 --tile 640
   counted as false positives. Keep this when adding metrics, or numbers stop being comparable with the report.
 - **AOT splits are by flight** (`split_of`: md5 of flight id, 20% val). Never split by frame: neighbouring frames are
   near-duplicates and leak.
+- **AOT parts share flights**: part3 has 352 of part1's flights and 364 of part2's; part1 and part2 share none. Part2 is
+  the test set for models trained on part1 (`data/aot_part2`). When training on part3, pass
+  `--exclude-flights part2.csv` and keep `--val-fraction 0.2`, so shared flights stay on the same side as in part1.
 - **Temporal stacks** are written by OpenCV, so channels are (B, G, R) = (t-k, t, t+k). Training and inference must
   both go through `sky/temporal.stack`. Any colour augmentation that mixes channels breaks them.
 - **PlaneNet must stay unpadded** with pool-aligned strides; `tests/test_satellite.py` checks dense scores equal
@@ -63,10 +67,13 @@ python -m sky.detect clip.mp4 --weights best.pt --temporal 2 --tile 640
 
 - **PlanesNet**: `planesnet.json` from Kaggle (`rhammell/planesnet`). Kaggle is blocked in the Claude cloud
   environment; it was supplied on the `data` branch as `archive.zip`.
-- **AOT**: public S3, no account. About 28% of frames listed in `groundtruth.csv` are missing (HTTP 404);
+- **AOT**: public S3, no account; `groundtruth.csv` per part at `<part>/ImageSets/groundtruth.csv` (part2 orders its
+  columns differently, which `csv.DictReader` handles). About 28% of part1 frames are missing (HTTP 404);
   `prepare_aot` over-plans by 35% and `evaluate_clips` retries other clips.
 - **Sentinel-2** (airborne satellite test set): public COGs at `sentinel-cogs.s3.us-west-2.amazonaws.com`,
-  read by window with rasterio. The STAC search API was blocked; scenes are found by listing the bucket per MGRS tile.
+  read by window with rasterio. The STAC search API was blocked in the cloud environment; locally, Earth Search
+  (`earth-search.aws.element84.com/v1`, collection `sentinel-2-l2a`) works and covers 2020. Its `raster:bands` give the
+  scale and offset (baseline >= 04.00 stores reflectance + 0.1).
 - Model weights (`*.pt`), `runs/` and data dirs are git-ignored.
 
 ## Gotchas
