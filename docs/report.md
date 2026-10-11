@@ -296,6 +296,26 @@ As-is, the model separates real aircraft from background and most clutter, but f
 Realigning helps recall but merges unrelated coloured specks on clutter into a white blob, so it is only usable
 once motion is confirmed by other means. With 19 positives, all of these numbers carry wide error bars.
 
+**A larger test: 927 aircraft at 10 airports (`data/s2_flying`).** The "Flying Airplanes" labels of Pamplona Segundo
+et al. (2021) mark 1,782 airplanes in flight in Sentinel-2 images around 15 European airports (January to June 2020).
+Converted to ground positions, they miss their aircraft by one offset per airport (200 m at CDG, 800 m at AGP), for a
+reason that could not be found without the authors' images. So they guide a search instead: around each label,
+find the three-colour signature; take each airport's offset as the shift most of its images agree on; keep labels
+with a strong signature at that offset. 5 airports have no consistent offset and are dropped. In two random samples
+of the result (80 chips), 72 show a clear aircraft on the centre. Details in `data/s2_flying/README.md`.
+
+| Test set | Input | Aircraft found at 0.5 | AUC vs background | False alarms at 0.5, background |
+| --- | --- | --- | --- | --- |
+| `data/s2_airborne` (19 aircraft, 250 background) | As-is | 47% | 0.99 | 0.8% |
+| | Bands realigned | 63% | 0.94 | 0.8% |
+| `data/s2_flying` (927 aircraft, 2,134 background) | As-is | **71%** | 0.96 | **0.7%** |
+| | Bands realigned | 56% | 0.94 | 0.7% |
+
+- On 49 times the aircraft, the model finds 71% at a 0.7% false-alarm rate on background. Both sets keep only aircraft
+  with a clear signature, so recall on all aircraft in flight is lower than either figure.
+- Realigning the bands now lowers recall: the 63% on 19 aircraft was within noise of the as-is score.
+- Recall varies by airport from 53% (DUB, 66 aircraft) to 77% (BRU, DUS).
+
 **Full-scene sanity check.** On the repo's San Francisco airport scene (Planet, about 3 m), the final model at
 threshold 0.9 boxes the parked aircraft with a handful of misfires on terminal buildings, so the airborne training
 did not break tarmac detection.
@@ -358,17 +378,18 @@ still improving when training stopped.
   15 on the part 2 test set) cannot be separated from run-to-run noise.
 - **Small data.** 1,548 training crops, from part 1 of AOT only. AOT has hundreds of thousands of labelled frames
   across three parts.
-- **A small real satellite test set.** 19 aircraft in flight on Sentinel-2, at 10 m resolution where PlanesNet is
-  about 3 m. Good enough to show the synthetic score overstates real performance, not to measure it precisely.
+- **Real satellite test sets keep only clear aircraft.** Both Sentinel-2 sets (19 and 927 aircraft) need a visible
+  three-colour signature to include an aircraft, so they overstate recall on faint ones; and they are at 10 m
+  resolution, where PlanesNet is about 3 m.
 - **Live tracking loses recall.** With per-frame recall near 50%, tracks fragment; the tracker's gating and
   straightness rule were not tuned for a moving camera.
 
 ### Next steps, by expected gain
 
 1. A GPU run: about 50 epochs on 10,000 to 20,000 AOT crops. The scripts already take these as arguments.
-2. Grow the Sentinel-2 set to a few hundred aircraft (more airports and dates, or ADS-B matching), then train a
-   Sentinel-2 model on the band-offset signature itself, with 10 m inputs and a window wide enough to hold all
-   three colour copies.
+2. Train a Sentinel-2 model on the band-offset signature itself, with 10 m inputs and a window wide enough to hold
+   all three colour copies. `data/s2_flying` (927 aircraft) is large enough to split into training and test by
+   airport.
 3. Tune tracking for a moving camera: compensate camera motion before gating, and allow longer gaps so tracks
    survive missed frames.
 4. Five-frame temporal input or a wider frame gap, aimed at the tiny targets.

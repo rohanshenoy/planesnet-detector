@@ -17,6 +17,8 @@ python -m pytest -q                      # ~1 min, synthetic data only, no downl
 
 # Satellite
 python -m satellite.train --planesnet planesnet.json --out models/plane.pt [--backgrounds DIR] [--airborne-val DIR]
+python -m satellite.build_s2_flying data/s2_flying --chips-from-labels    # chips are not committed
+python -m satellite.evaluate_s2 models/plane.pt data/s2_flying
 python -m satellite.detect models/plane.pt scene.png [--references other_dates.png ...] [--json dets.json]
 
 # Sky
@@ -37,6 +39,8 @@ python -m sky.detect clip.mp4 --weights best.pt --temporal 2 --tile 640
 | `satellite/augment.py` | Plane cut-outs (`plane_mask`), procedural cloud/sea/land backgrounds, band-offset ghosting, contrails, distractor negatives |
 | `satellite/data.py` | PlanesNet JSON loader, `ChipDataset` mixing real chips with on-the-fly synthetic in-flight samples |
 | `satellite/train.py` | Training; model selection on in-flight validation (real if `--airborne-val`, else synthetic), not PlanesNet |
+| `satellite/build_s2_flying.py` | Label-guided Sentinel-2 test set (`data/s2_flying`): converts the Flying Airplanes labels, finds three-colour signatures near them, one offset per airport; `--chips-from-labels` re-cuts chips |
+| `satellite/evaluate_s2.py` | Scores PlaneNet on a Sentinel-2 test set (`data/s2_airborne`, `data/s2_flying`) |
 | `satellite/detect.py` | Dense scoring, peak finding, static-object suppression across dates, band-offset motion and heading |
 | `sky/prepare_aot.py` | AOT to YOLO crops (640 px, native resolution), flight-level split, single and temporal variants |
 | `sky/temporal.py` | Align frames t-k and t+k to t (phase correlation), brightness-match, stack as 3 channels |
