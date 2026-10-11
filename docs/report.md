@@ -213,6 +213,28 @@ threshold with the best F1 score.
   a verdict on the layer: about half its weights started untrained, and its validation loss was still falling steeply
   (7.5 at epoch 12, against 5.1 for `yolo11n`). Comparing them needs the longer GPU run.
 
+### Second test set: AOT part 2
+
+On 1,708 aircraft from 1,312 flights in AOT part 2, none of which any model trained on, every model scores within
+0.01 of its result above, and the ranking is unchanged.
+
+Part 2 shares no flights with part 1 (checked by flight id), so it is a clean test for all of these models. It was
+built with the same recipe as the validation set (`prepare_aot --part part2`): 1,813 crops, 6.6 times the aircraft.
+
+| Model | Average precision | Precision / recall at best F1 | Recall, sky background | Recall, ground background | Recall, targets under 10 px |
+| --- | --- | --- | --- | --- | --- |
+| `yolo11n` COCO, no training | 0.12 | 48% / 13% | 17% | 5% | 0% |
+| `yolo11n` fine-tuned, 1 frame | 0.56 | 62% / 55% | 68% | 33% | 28% |
+| `yolo11n` fine-tuned, 3 frames | 0.58 | 68% / 57% | 70% | 32% | 30% |
+| `yolo11s`, 3 frames | **0.64** | **75% / 57%** | 69% | **35%** | **32%** |
+| `yolo11n-p2`, 3 frames | 0.42 | 52% / 44% | 56% | 20% | 14% |
+
+Groups: 1,095 aircraft against sky, 590 against ground (23 unlabelled), 727 under 10 px, 981 at 10 px or more.
+
+- The validation results were not a product of a small set: average precision moves by at most 0.01 per model.
+- With 6.6 times the aircraft, the 3-frame input's gain is clearer: 6 points more precision at 2 points more recall.
+- `yolo11s` leads on every group except sky background, where all three fine-tuned models are within 2 points.
+
 ### Tracker on full video clips
 
 On full frames, an offline tracking pass keeps nearly every hit and cuts false alarms by about 40%; live
@@ -332,8 +354,8 @@ still improving when training stopped.
 
 ### Limitations
 
-- **One run per model.** Differences of a few points in a subgroup (about 2 aircraft) cannot be separated from
-  run-to-run noise.
+- **One run per model.** Differences of a few points in a subgroup (about 2 aircraft on the validation set, about
+  15 on the part 2 test set) cannot be separated from run-to-run noise.
 - **Small data.** 1,548 training crops, from part 1 of AOT only. AOT has hundreds of thousands of labelled frames
   across three parts.
 - **A small real satellite test set.** 19 aircraft in flight on Sentinel-2, at 10 m resolution where PlanesNet is
