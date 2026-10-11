@@ -24,6 +24,7 @@ Example:
 """
 
 import argparse
+import os
 
 
 def main(argv=None):
@@ -53,7 +54,8 @@ def main(argv=None):
         model = model.load(a.pretrained)
     colour = dict(hsv_h=0.0, hsv_s=0.0) if a.temporal else {}
     return model.train(data=a.data, epochs=a.epochs, imgsz=a.imgsz, batch=a.batch,
-                       device=a.device, project=a.project, name=a.name, workers=a.workers,
+                       # absolute, or recent Ultralytics nests it under its own runs/<task>/ directory
+                       device=a.device, project=os.path.abspath(a.project), name=a.name, workers=a.workers,
                        close_mosaic=a.close_mosaic,
                        **colour,
                        # sky has no canonical "up" for distant aircraft; keep scale jitter mild
