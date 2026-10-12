@@ -147,3 +147,17 @@ def test_fetch_retries_transient_errors_but_not_missing_frames(monkeypatch):
     with pytest.raises(urllib.error.HTTPError):
         prepare_aot.fetch('part1', 'fl', 'a.png')
     assert len(calls) == 1
+
+
+def test_download_clip_fetches_frames_from_the_given_part(tmp_path, monkeypatch):
+    from sky import evaluate_clips
+    calls = []
+
+    def fake_fetch(part, flight, img_name):
+        calls.append((part, flight, img_name))
+        return np.zeros((4, 4), np.uint8)
+    monkeypatch.setattr(evaluate_clips, 'fetch', fake_fetch)
+    flights = {'fl': {'frames': {f: 'f%d.png' % f for f in range(10)}}}
+    paths = evaluate_clips.download_clip(flights, 'fl', 3, 4, 1, str(tmp_path / 'clip'), workers=2, part='part2')
+    assert sorted(paths) == list(range(2, 8))
+    assert {c[0] for c in calls} == {'part2'} and len(calls) == 6
