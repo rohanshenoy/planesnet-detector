@@ -1,5 +1,15 @@
 *.json
 *.pyc
 
-models/
+# trained weights and run outputs (root only: sky/models/ holds model configs)
+/models/
+*.pt
+runs/
+__pycache__/
+
+# detector outputs
 images/*_detection.png
+*_detections.png
+*_detections.jpg
+*_tracked.mp4
+!report_figs/*.png
