@@ -77,6 +77,10 @@ recalls are read at a higher-precision operating point, so they trade sky for gr
 so small differences (a few points of recall in a subgroup) are within noise. `docs/report.md` also covers the
 stride-4 head experiment (`sky/models/yolo11-p2.yaml`, undertrained at 12 epochs) and full-frame tracking results.
 
+Trained longer on more data (50 epochs on 10,051 crops from parts 1 and 3, on an Apple GPU), `yolo11s` with 3 frames
+reaches **0.81** average precision on AOT part 2 (1,708 aircraft from flights no model trained on), up from 0.64,
+with 85% precision at 77% recall. `docs/report.md` has the details.
+
 ```bash
 curl -o groundtruth.csv https://airborne-obj-detection-challenge-training.s3.amazonaws.com/part1/ImageSets/groundtruth.csv
 python -m sky.prepare_aot groundtruth.csv data/aot --train 1500 --val 400

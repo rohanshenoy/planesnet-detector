@@ -21,7 +21,8 @@ lines, with a `CLAUDE.md` guide and this report in `docs/`. We also built a real
 from orbit (19 Sentinel-2 aircraft), where the satellite model finds 9 of 19, and scored the tracker on full video
 clips, where an offline tracking pass cuts false alarms by 42% at no real cost in recall. Of two architecture
 experiments, the larger `yolo11s` backbone raised average precision further to 0.63; an extra fine-detail detection
-layer was worse after 12 epochs, too few for its untrained layers to catch up.
+layer was worse after 12 epochs, too few for its untrained layers to catch up. A later 50-epoch run on 6.5 times the
+data, on an Apple GPU, took `yolo11s` to 0.81 on a second, larger test set of 1,708 aircraft.
 
 ## Starting point
 
@@ -235,6 +236,26 @@ Groups: 1,095 aircraft against sky, 590 against ground (23 unlabelled), 727 unde
 - With 6.6 times the aircraft, the 3-frame input's gain is clearer: 6 points more precision at 2 points more recall.
 - `yolo11s` leads on every group except sky background, where all three fine-tuned models are within 2 points.
 
+### Longer training: 50 epochs on 10,051 crops
+
+On the part 2 test set, `yolo11s` with 3-frame input trained for 50 epochs on 6.5 times the data reaches 0.81 average
+precision, up from 0.64, and finds more than half of the aircraft against ground and under 10 px.
+
+- **Data:** the part 1 training flights (5,874 crops) plus part 3 with part 2's flights excluded (4,177 crops): 10,051
+  crops from 1,420 flights. Validation: 540 crops from 230 held-out part 1 flights. No training flight is in part 2.
+- **Recipe:** as before (640 px, batch 16, COCO `yolo11s` weights), but 50 epochs with mosaic off for the last 10,
+  on an Apple M5 Pro GPU (`--device mps`): about 6.7 minutes per epoch.
+- **Model selection** used the validation set only: the best epoch was 45. Validation mAP50 (all five classes) rose
+  from 0.21 at epoch 12 to 0.31 at epoch 45.
+
+| Model | Average precision | Precision / recall at best F1 | Maximum recall | Recall, sky background | Recall, ground background | Recall, targets under 10 px |
+| --- | --- | --- | --- | --- | --- | --- |
+| `yolo11s`, 3 frames, 12 epochs, 1,548 crops | 0.64 | 75% / 57% | 80% | 69% | 35% | 32% |
+| `yolo11s`, 3 frames, 50 epochs, 10,051 crops | **0.81** | **85% / 77%** | **85%** | **87%** | **58%** | **55%** |
+
+- The gain is largest on the weak spots: aircraft against ground (35% to 58%) and under 10 px (32% to 55%).
+- Data and epochs changed together, so this run does not say how much of the gain comes from each.
+
 ### Tracker on full video clips
 
 On full frames, an offline tracking pass keeps nearly every hit and cuts false alarms by about 40%; live
@@ -376,8 +397,8 @@ still improving when training stopped.
 
 - **One run per model.** Differences of a few points in a subgroup (about 2 aircraft on the validation set, about
   15 on the part 2 test set) cannot be separated from run-to-run noise.
-- **Small data.** 1,548 training crops, from part 1 of AOT only. AOT has hundreds of thousands of labelled frames
-  across three parts.
+- **Training data.** The 12-epoch models used 1,548 crops from part 1; the 50-epoch model used 10,051 from parts 1 and
+  3. AOT has hundreds of thousands of labelled frames, so more is available.
 - **Real satellite test sets keep only clear aircraft.** Both Sentinel-2 sets (19 and 927 aircraft) need a visible
   three-colour signature to include an aircraft, so they overstate recall on faint ones; and they are at 10 m
   resolution, where PlanesNet is about 3 m.
@@ -386,7 +407,8 @@ still improving when training stopped.
 
 ### Next steps, by expected gain
 
-1. A GPU run: about 50 epochs on 10,000 to 20,000 AOT crops. The scripts already take these as arguments.
+1. Score the 50-epoch model on full video clips (`sky/evaluate_clips.py`) to see how much of its gain on crops
+   carries over to full frames and tracking; then separate the effects of data and epochs.
 2. Train a Sentinel-2 model on the band-offset signature itself, with 10 m inputs and a window wide enough to hold
    all three colour copies. `data/s2_flying` (927 aircraft) is large enough to split into training and test by
    airport.
