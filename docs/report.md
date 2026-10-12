@@ -256,6 +256,19 @@ precision, up from 0.64, and finds more than half of the aircraft against ground
 - The gain is largest on the weak spots: aircraft against ground (35% to 58%) and under 10 px (32% to 55%).
 - Data and epochs changed together, so this run does not say how much of the gain comes from each.
 
+**Part 3 adds nothing measurable.** A second 50-epoch run on the part 1 crops alone (5,874, same recipe) scores the same
+on part 2:
+
+| Model | Average precision | Precision / recall at best F1 | Recall, sky | Recall, ground | Recall, under 10 px |
+| --- | --- | --- | --- | --- | --- |
+| `yolo11s`, 12 epochs, 1,548 part 1 crops | 0.641 | 75% / 57% | 69% | 35% | 32% |
+| `yolo11s`, 50 epochs, 5,874 part 1 crops | **0.805** | 87% / 75% | 86% | 55% | 55% |
+| `yolo11s`, 50 epochs, 10,051 crops (parts 1 + 3) | **0.805** | 85% / 77% | 87% | 58% | 55% |
+
+The gain from 0.64 to 0.80 comes from 50 epochs instead of 12 together with 3.8 times more part 1 crops; the 4,177 part
+3 crops on top change no figure by more than 3 points. Separating epochs from the amount of part 1 data needs a 50-epoch
+run on 1,548 crops.
+
 ### Tracker on full video clips
 
 On full frames, an offline tracking pass keeps nearly every hit and cuts false alarms by about 40%; live
@@ -472,8 +485,8 @@ still improving when training stopped.
 
 ### Next steps, by expected gain
 
-1. Score the 50-epoch model on full video clips (`sky/evaluate_clips.py`) to see how much of its gain on crops
-   carries over to full frames and tracking; then separate the effects of data and epochs.
+1. Train the sky model for full frames: add background-only crops and hard negatives mined from full frames, then
+   rescore the clips; and run 50 epochs on 1,548 crops to separate epochs from data.
 2. Test S2Net on Sentinel-2 aircraft found without a band-offset finder (ADS-B positions matched to scenes), and
    add finder false positives (cars, roofs) as training negatives.
 3. Tune tracking for a moving camera: compensate camera motion before gating, and allow longer gaps so tracks

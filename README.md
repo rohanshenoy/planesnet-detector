@@ -79,7 +79,10 @@ stride-4 head experiment (`sky/models/yolo11-p2.yaml`, undertrained at 12 epochs
 
 Trained longer on more data (50 epochs on 10,051 crops from parts 1 and 3, on an Apple GPU), `yolo11s` with 3 frames
 reaches **0.80** average precision on AOT part 2 (1,708 aircraft from flights no model trained on), up from 0.64,
-with 85% precision at 77% recall. `docs/report.md` has the details.
+with 85% precision at 77% recall. The same 50 epochs on part 1 alone (5,874 crops) score the same 0.805, so the
+part 3 data adds nothing measurable. On full video frames the lead is smaller (0.50 against 0.45 for `yolo11n`).
+For satellites, `satellite/train_s2.py` trains S2Net on real Sentinel-2 aircraft: it finds 18 of 19 aircraft in an
+independent 2025 set where PlaneNet finds 5 to 13. `docs/report.md` has the details.
 
 ```bash
 curl -o groundtruth.csv https://airborne-obj-detection-challenge-training.s3.amazonaws.com/part1/ImageSets/groundtruth.csv
