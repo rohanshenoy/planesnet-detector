@@ -287,6 +287,30 @@ aircraft instances. Each detector is scored three ways:
   clutter, and these clips include aircraft over 1.5 km away. One clip had a 16 px aircraft at 1.6 km that both
   models missed even on a crop centred on it.
 
+### Full frames with the 50-epoch model
+
+On full frames the 50-epoch model is still best (average precision 0.50 against 0.45), but its lead is much smaller
+than on crops (0.80 against 0.58), and the 12-epoch `yolo11s` falls behind `yolo11n`.
+
+Same 8 clips of 50 frames (400 aircraft instances), all four models rerun. Each model uses its best-F1 threshold from
+the 540 held-out part 1 validation crops: 0.209 (`yolo11n` 1 frame), 0.154 (3 frames), 0.209 (`yolo11s` 12 epochs),
+0.226 (50 epochs). These differ from the thresholds of the table above, so the `yolo11n` rows differ from it too.
+Average precision counts every detection at confidence 0.05 or more, so it does not depend on a threshold.
+
+| Model | Full-frame average precision | Raw: found / precision / false alarms per frame | Offline tracking: found / precision | Live (5 hits): found / precision |
+| --- | --- | --- | --- | --- |
+| `yolo11n`, 1 frame | 0.43 | 47% / 47% / 0.54 | 46% / 59% | 20% / 63% |
+| `yolo11n`, 3 frames | 0.45 | 49% / 45% / 0.59 | 48% / 56% | 21% / 68% |
+| `yolo11s`, 3 frames, 12 epochs | 0.34 | 51% / 35% / 0.97 | 49% / 43% | 24% / 46% |
+| `yolo11s`, 3 frames, 50 epochs | **0.50** | **57% / 48%** / 0.61 | **54% / 65%** | 24% / 73% |
+
+- **Crops overstate full-frame performance.** Training and crop scores use 640 px crops placed around aircraft
+  (about 15% empty), so they reward finding aircraft more than ignoring a whole frame of clutter. On full frames the
+  12-epoch `yolo11s` raises 0.97 false alarms per frame at its crop threshold. More background-only crops, or hard
+  negatives mined from full frames, are the obvious next change to the training data.
+- **Wide error bars.** 400 instances from 8 clips are about 8 tracked aircraft, so differences of a few points
+  between models are not significant; the ranking on 1,708 crop aircraft is the firmer result.
+
 ### Satellite classifier
 
 The satellite model scores 0.999 AUC on synthetic in-flight validation, but finds only 9 of 19 real aircraft in
@@ -342,6 +366,47 @@ threshold 0.9 boxes the parked aircraft with a handful of misfires on terminal b
 did not break tarmac detection.
 
 ![Satellite detector output on the San Francisco airport scene](../report_figs/fig_satellite_scene.png)
+
+### A Sentinel-2 model: S2Net
+
+A small network trained on the real Sentinel-2 aircraft of `data/s2_flying` finds 18 of the 19 aircraft of the
+independent `data/s2_airborne` set at every operating point, where PlaneNet finds 5 to 13.
+
+PlaneNet looks at a 60 m window built for 3 m PlanesNet chips, so on Sentinel-2 it never sees all three colour copies.
+`satellite/s2_model.py` (S2Net, 290k parameters) looks at 48x48 px (480 m) around the candidate: three blocks of two
+3x3 convolutions with batch norm, then average and max pooling and one output. `satellite/train_s2.py` trains it on the
+927 aircraft of `data/s2_flying` against its background chips, used twice: as cut, and re-centred on the chip's
+strongest single-band colour peak (a red roof, a blue pool), so that "colourful thing in the middle" is not enough.
+Augmentation: 90-degree rotations, flips, 2 px shifts, brightness and contrast. 30 epochs, AdamW, one-cycle schedule,
+positives weighted to balance the classes.
+
+**Cross-validation by airport** (5 folds; every chip scored by a model that never saw its airport):
+
+| | S2Net | PlaneNet |
+| --- | --- | --- |
+| Aircraft found at 0.5 (927) | **99%** | 71% |
+| False alarms at 0.5, background (2,134) | **0.2%** | 0.7% |
+| False alarms at 0.5, background re-centred on a colour peak | 0.4% | not scored |
+| AUC vs background | **0.999** | 0.96 |
+
+This is partly circular: the aircraft of `data/s2_flying` were kept only where a band-offset finder saw a strong
+signature, which is what S2Net learns. Every airport scores 97% or more.
+
+**Independent test: `data/s2_airborne`** (2025, six airports including two in the US, a different finder, labelled by
+eye; 19 aircraft, 62 finder false positives, 250 background chips), model trained on all of `data/s2_flying`:
+
+| | S2Net | PlaneNet |
+| --- | --- | --- |
+| Aircraft found at 0.5 | **95%** (18 of 19: all 14 aircraft, 4 of 5 probable) | 47% |
+| AUC vs clutter | **0.99** | 0.88 |
+| AUC vs background | **0.999** | 0.99 |
+| False alarms at 0.5: clutter / background | 11% / 1.2% | **8% / 0.8%** |
+| Aircraft found with clutter false alarms at most 5% / 8.1% / 15% | **18 / 18 / 18** of 19 | 5 / 12 / 13 of 19 |
+
+- At 0.5 S2Net raises a few more false alarms, but at any matched false-alarm rate it finds far more aircraft.
+- With 19 aircraft every figure here has wide error bars, and both test sets lean towards clear signatures. The next
+  check is a set built without a band-offset finder, such as ADS-B positions matched to Sentinel-2 scenes.
+- Its 0.5 threshold sits on a steep part of the curve: at 0.80 it keeps 18 of 19 with clutter false alarms of 8%.
 
 ## Examples
 
@@ -409,9 +474,8 @@ still improving when training stopped.
 
 1. Score the 50-epoch model on full video clips (`sky/evaluate_clips.py`) to see how much of its gain on crops
    carries over to full frames and tracking; then separate the effects of data and epochs.
-2. Train a Sentinel-2 model on the band-offset signature itself, with 10 m inputs and a window wide enough to hold
-   all three colour copies. `data/s2_flying` (927 aircraft) is large enough to split into training and test by
-   airport.
+2. Test S2Net on Sentinel-2 aircraft found without a band-offset finder (ADS-B positions matched to scenes), and
+   add finder false positives (cars, roofs) as training negatives.
 3. Tune tracking for a moving camera: compensate camera motion before gating, and allow longer gaps so tracks
    survive missed frames.
 4. Five-frame temporal input or a wider frame gap, aimed at the tiny targets.

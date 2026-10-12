@@ -19,6 +19,7 @@ python -m pytest -q                      # ~1 min, synthetic data only, no downl
 python -m satellite.train --planesnet planesnet.json --out models/plane.pt [--backgrounds DIR] [--airborne-val DIR]
 python -m satellite.build_s2_flying data/s2_flying --chips-from-labels    # chips are not committed
 python -m satellite.evaluate_s2 models/plane.pt data/s2_flying
+python -m satellite.train_s2 data/s2_flying --out models/s2net.pt --test data/s2_airborne   # ~1.5 h on CPU
 python -m satellite.detect models/plane.pt scene.png [--references other_dates.png ...] [--json dets.json]
 
 # Sky
@@ -40,6 +41,7 @@ python -m sky.detect clip.mp4 --weights best.pt --temporal 2 --tile 640
 | `satellite/data.py` | PlanesNet JSON loader, `ChipDataset` mixing real chips with on-the-fly synthetic in-flight samples |
 | `satellite/train.py` | Training; model selection on in-flight validation (real if `--airborne-val`, else synthetic), not PlanesNet |
 | `satellite/build_s2_flying.py` | Label-guided Sentinel-2 test set (`data/s2_flying`): converts the Flying Airplanes labels, finds three-colour signatures near them, one offset per airport; `--chips-from-labels` re-cuts chips |
+| `satellite/s2_model.py`, `satellite/train_s2.py` | S2Net: 48x48 px Sentinel-2 classifier trained on `data/s2_flying`, cross-validated by airport, tested on `data/s2_airborne` |
 | `satellite/evaluate_s2.py` | Scores PlaneNet on a Sentinel-2 test set (`data/s2_airborne`, `data/s2_flying`) |
 | `satellite/detect.py` | Dense scoring, peak finding, static-object suppression across dates, band-offset motion and heading |
 | `sky/prepare_aot.py` | AOT to YOLO crops (640 px, native resolution), flight-level split, single and temporal variants |
@@ -85,5 +87,8 @@ python -m sky.detect clip.mp4 --weights best.pt --temporal 2 --tile 640
 - Training on CPU is slow (`yolo11n` at 640 px: about 6 min per epoch on 1,500 crops with 4 cores). Use a GPU for
   anything beyond smoke tests.
 - `sky/detect.py --temporal K` delays output by K frames; reported frame numbers are shifted back to source frames.
+- Small networks with batch norm need about 100+ training steps before eval-mode scores mean anything; with fewer,
+  running statistics are unsettled and every input gets the same score (seen in `tests/test_s2_model.py`).
+- PyTorch on CPU uses every core by default; alongside other jobs set `OMP_NUM_THREADS=4` or it thrashes.
 - Untrained YOLO heads (the P2 layers) need more epochs than the transferred ones; compare architectures at equal
   and sufficient epochs.
