@@ -74,8 +74,8 @@ divider('Sky results', 'Validation, a 6.6× larger test set, precision-recall cu
     valAxisLabelFormatCode: '0%', catAxisLabelFontSize: 14 }));
 }
 if (p2.yolo11s_3frame_p1_e50) {
-  const s = content('Data or epochs?', 'Part 1 only for 50 epochs: ' + p2.yolo11s_3frame_p1_e50.ap.toFixed(2) +
-    '; adding part 3: ' + p2.yolo11s_3frame_p13_e50.ap.toFixed(2),
+  const s = content('Data or epochs?', 'Part 1 alone reaches the same ' + p2.yolo11s_3frame_p1_e50.ap.toFixed(3) +
+    ' as parts 1 + 3: the part 3 data added nothing measurable',
     'Three yolo11s 3-frame runs scored on AOT part 2. 12 epochs on 1,548 part 1 crops (cloud CPU); 50 epochs on 5,874 ' +
     'part 1 crops; 50 epochs on 10,051 crops from parts 1 and 3. The last two differ only in the part 3 data, at equal ' +
     'epochs. The first two differ in both epochs and amount of part 1 data, so a run of 50 epochs on 1,548 crops is ' +
@@ -84,9 +84,9 @@ if (p2.yolo11s_3frame_p1_e50) {
     ['yolo11s_3frame_p1_e50', '50 epochs, 5,874 crops (part 1)', '86B6EF'],
     ['yolo11s_3frame_p13_e50', '50 epochs, 10,051 crops (parts 1 + 3)', T.accent2]];
   s.addChart(pres.charts.BAR, [{ name: 'Average precision', labels: runs.map((r) => r[1]),
-    values: runs.map((r) => +p2[r[0]].ap.toFixed(2)) }],
+    values: runs.map((r) => +p2[r[0]].ap.toFixed(3)) }],
   chartOpts({ x: M, y: TOP + 0.05, w: 7.4, h: 4.85, barDir: 'bar', barGapWidthPct: 45, chartColors: runs.map((r) => r[2]),
-    showValue: true, dataLabelPosition: 'outEnd', dataLabelFormatCode: '0.00', title: 'Average precision on AOT part 2',
+    showValue: true, dataLabelPosition: 'outEnd', dataLabelFormatCode: '0.000', title: 'Average precision on AOT part 2',
     valAxisMinVal: 0, valAxisMaxVal: 1, valAxisLabelFormatCode: '0.0', catAxisOrientation: 'maxMin', catAxisLabelFontSize: 13 }));
   const x = M + 7.8;
   const w = CW - 7.8;
@@ -98,8 +98,8 @@ if (p2.yolo11s_3frame_p1_e50) {
     ['Precision / recall', pct(p2.yolo11s_3frame_p1_e50.precision) + ' / ' + pct(p2.yolo11s_3frame_p1_e50.recall),
       pct(p2.yolo11s_3frame_p13_e50.precision) + ' / ' + pct(p2.yolo11s_3frame_p13_e50.recall)],
   ], x, TOP + 0.1, w, [2.2, 1.2, w - 3.4], { size: 14 });
-  caption(s, 'Equal epochs: the difference between the two 50-epoch runs is the part 3 data.', x, TOP + 3.2, w, 0.8,
-    { color: HEX.muted });
+  caption(s, 'Equal epochs, so the two 50-epoch runs differ only in the part 3 data. The gain from 0.64 comes from ' +
+    '50 epochs and 3.8× more part 1 crops together.', x, TOP + 3.2, w, 1.2, { color: HEX.muted });
 }
 {
   const s = content('What the longer run finds', 'Aircraft the 12-epoch model missed: against ground, and 6 px against sky',
