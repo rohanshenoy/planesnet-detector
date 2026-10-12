@@ -22,7 +22,7 @@ from orbit (19 Sentinel-2 aircraft), where the satellite model finds 9 of 19, an
 clips, where an offline tracking pass cuts false alarms by 42% at no real cost in recall. Of two architecture
 experiments, the larger `yolo11s` backbone raised average precision further to 0.63; an extra fine-detail detection
 layer was worse after 12 epochs, too few for its untrained layers to catch up. A later 50-epoch run on 6.5 times the
-data, on an Apple GPU, took `yolo11s` to 0.81 on a second, larger test set of 1,708 aircraft.
+data, on an Apple GPU, took `yolo11s` to 0.80 on a second, larger test set of 1,708 aircraft.
 
 ## Starting point
 
@@ -238,7 +238,7 @@ Groups: 1,095 aircraft against sky, 590 against ground (23 unlabelled), 727 unde
 
 ### Longer training: 50 epochs on 10,051 crops
 
-On the part 2 test set, `yolo11s` with 3-frame input trained for 50 epochs on 6.5 times the data reaches 0.81 average
+On the part 2 test set, `yolo11s` with 3-frame input trained for 50 epochs on 6.5 times the data reaches 0.80 average
 precision, up from 0.64, and finds more than half of the aircraft against ground and under 10 px.
 
 - **Data:** the part 1 training flights (5,874 crops) plus part 3 with part 2's flights excluded (4,177 crops): 10,051
@@ -251,7 +251,7 @@ precision, up from 0.64, and finds more than half of the aircraft against ground
 | Model | Average precision | Precision / recall at best F1 | Maximum recall | Recall, sky background | Recall, ground background | Recall, targets under 10 px |
 | --- | --- | --- | --- | --- | --- | --- |
 | `yolo11s`, 3 frames, 12 epochs, 1,548 crops | 0.64 | 75% / 57% | 80% | 69% | 35% | 32% |
-| `yolo11s`, 3 frames, 50 epochs, 10,051 crops | **0.81** | **85% / 77%** | **85%** | **87%** | **58%** | **55%** |
+| `yolo11s`, 3 frames, 50 epochs, 10,051 crops | **0.80** | **85% / 77%** | **85%** | **87%** | **58%** | **55%** |
 
 - The gain is largest on the weak spots: aircraft against ground (35% to 58%) and under 10 px (32% to 55%).
 - Data and epochs changed together, so this run does not say how much of the gain comes from each.

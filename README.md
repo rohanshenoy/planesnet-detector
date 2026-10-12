@@ -78,7 +78,7 @@ so small differences (a few points of recall in a subgroup) are within noise. `d
 stride-4 head experiment (`sky/models/yolo11-p2.yaml`, undertrained at 12 epochs) and full-frame tracking results.
 
 Trained longer on more data (50 epochs on 10,051 crops from parts 1 and 3, on an Apple GPU), `yolo11s` with 3 frames
-reaches **0.81** average precision on AOT part 2 (1,708 aircraft from flights no model trained on), up from 0.64,
+reaches **0.80** average precision on AOT part 2 (1,708 aircraft from flights no model trained on), up from 0.64,
 with 85% precision at 77% recall. `docs/report.md` has the details.
 
 ```bash
