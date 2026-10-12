@@ -22,3 +22,9 @@ images/*_detection.png
 !/data/s2_airborne/
 !/data/s2_flying/
 /data/s2_flying/chips/
+
+# deck generator outputs
+/docs/deck/build/
+/docs/deck/node_modules/
+/docs/deck/package-lock.json
+!/docs/deck/package.json
