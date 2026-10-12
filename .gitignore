@@ -13,3 +13,18 @@ images/*_detection.png
 *_detections.jpg
 *_tracked.mp4
 !report_figs/*.png
+
+# local environment
+.venv/
+
+# downloaded and generated data (data/s2_airborne and the labels in data/s2_flying are committed)
+/data/*
+!/data/s2_airborne/
+!/data/s2_flying/
+/data/s2_flying/chips/
+
+# deck generator outputs
+/docs/deck/build/
+/docs/deck/node_modules/
+/docs/deck/package-lock.json
+!/docs/deck/package.json

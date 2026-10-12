@@ -54,7 +54,7 @@ def candidate_clips(flights, length, pad, seed=0):
                 yield fid, start
 
 
-def download_clip(flights, fid, start, length, pad, out, workers=16):
+def download_clip(flights, fid, start, length, pad, out, workers=16, part='part1'):
     """Cache the clip's frames as greyscale PNGs; returns {frame: path}, or None
     if any frame is missing from the bucket (about 28% of AOT frames are)."""
     import shutil
@@ -65,7 +65,7 @@ def download_clip(flights, fid, start, length, pad, out, workers=16):
     def get(f):
         path = os.path.join(out, '%06d.png' % f)
         if not os.path.exists(path):
-            cv2.imwrite(path, fetch(fid, flights[fid]['frames'][f]))
+            cv2.imwrite(path, fetch(part, fid, flights[fid]['frames'][f]))
         return f, path
 
     try:
@@ -142,7 +142,8 @@ def score(per_frame_preds, gts_by_frame):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument('groundtruth')
+    p.add_argument('groundtruth', help='AOT groundtruth.csv of the part given by --part')
+    p.add_argument('--part', default='part1', choices=['part1', 'part2', 'part3'])
     p.add_argument('cache', help='directory for downloaded clip frames')
     p.add_argument('--model', action='append', required=True,
                    help='name=weights:threshold[:k]  (k = temporal frame offset, 0/omitted = single frame)')
@@ -171,7 +172,7 @@ def main(argv=None):
         if fid in used:
             continue
         paths = download_clip(flights, fid, start, a.length, pad,
-                              os.path.join(a.cache, '%s_%d' % (fid[:12], start)))
+                              os.path.join(a.cache, '%s_%d' % (fid[:12], start)), part=a.part)
         if paths is None:
             continue
         clips.append((fid, start))

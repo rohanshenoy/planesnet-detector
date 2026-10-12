@@ -1,10 +1,14 @@
 """
 Score the satellite classifier on real Sentinel-2 aircraft in flight.
 
-data/s2_airborne/ holds 64x64 chips (10 m pixels, reflectance / 0.3 as 8-bit)
-around candidates from a band-offset finder at six busy airports, labelled by
-eye: 'aircraft', 'probable', 'clutter' (finder false positives), plus random
-'background' chips from the same scenes.
+Each test set is a directory of 64x64 chips (10 m pixels, reflectance / 0.3 as
+8-bit) centred on a candidate, with labels.csv:
+
+  data/s2_airborne  candidates from a band-offset finder at six airports, labelled
+                    by eye: 'aircraft', 'probable', 'clutter' (finder false
+                    positives), plus random 'background' chips from the same scenes
+  data/s2_flying    'aircraft' from the Flying Airplanes labels at 15 European
+                    airports, plus random 'background' (satellite/build_s2_flying.py)
 
 Sentinel-2 captures blue, green and red a fraction of a second apart, so an
 aircraft at 10 m resolution appears as three colour copies 3-40 px apart,
@@ -12,10 +16,12 @@ wider than the 60 m footprint of a PlanesNet chip. Two inputs are scored:
 
   as-is       the 60 m (6 px) square around the green copy, upsampled to 20 px
   realigned   red and blue first shifted onto the green copy using the
-              finder's blue/red positions (motion compensation), then cropped
+              finder's blue/red positions (motion compensation), then cropped;
+              only for test sets that record those positions
 
 Example:
     python -m satellite.evaluate_s2 models/plane.pt data/s2_airborne
+    python -m satellite.evaluate_s2 models/plane.pt data/s2_flying
 """
 
 import argparse
@@ -54,17 +60,27 @@ def scores(model, rows, root, realign, device):
     return torch.sigmoid(model(x)).flatten().cpu().numpy()
 
 
+LABELS = ('aircraft', 'probable', 'clutter', 'background')
+
+
 def summarise(s, rows):
     lab = np.array([r['label'] for r in rows])
     pos = np.isin(lab, ['aircraft', 'probable'])
     out = {}
-    for neg_name, neg in (('vs clutter', lab == 'clutter'), ('vs background', lab == 'background')):
-        m = pos | neg
-        out['auc ' + neg_name] = round(auc(s[m], pos[m]), 3)
+    for neg_label in ('clutter', 'background'):
+        neg = lab == neg_label
+        if neg.any():
+            m = pos | neg
+            out['auc vs ' + neg_label] = round(auc(s[m], pos[m]), 3)
     out['recall@0.5 (aircraft+probable)'] = round(float((s[pos] > 0.5).mean()), 3)
-    out['false positive rate@0.5, clutter'] = round(float((s[lab == 'clutter'] > 0.5).mean()), 3)
-    out['false positive rate@0.5, background'] = round(float((s[lab == 'background'] > 0.5).mean()), 3)
-    out['mean score'] = {k: round(float(s[lab == k].mean()), 3) for k in ('aircraft', 'probable', 'clutter', 'background')}
+    for neg_label in ('clutter', 'background'):
+        if (lab == neg_label).any():
+            out['false positive rate@0.5, ' + neg_label] = round(float((s[lab == neg_label] > 0.5).mean()), 3)
+    out['mean score'] = {k: round(float(s[lab == k].mean()), 3) for k in LABELS if (lab == k).any()}
+    airports = np.array([r.get('airport', '') for r in rows])
+    if pos.any() and airports[0]:
+        out['recall@0.5 by airport'] = {a: '%d/%d' % ((s[pos & (airports == a)] > 0.5).sum(), (pos & (airports == a)).sum())
+                                        for a in sorted(set(airports[pos]))}
     return out
 
 
@@ -79,11 +95,16 @@ def main(argv=None):
     rows = list(csv.DictReader(open(os.path.join(a.data, 'labels.csv'))))
     model = load(a.model, a.device)
     lab = [r['label'] for r in rows]
-    finder = {'finder precision (aircraft only)': round(lab.count('aircraft') / max(sum(r['source'] == 'finder candidate' for r in rows), 1), 3),
-              'finder precision (incl. probable)': round((lab.count('aircraft') + lab.count('probable')) /
-                                                         max(sum(r['source'] == 'finder candidate' for r in rows), 1), 3)}
-    result = {'counts': {k: lab.count(k) for k in ('aircraft', 'probable', 'clutter', 'background')}, 'finder': finder}
-    for name, realign in (('as-is', False), ('realigned', True)):
+    result = {'counts': {k: lab.count(k) for k in LABELS if k in lab}}
+    n_finder = sum(r['source'] == 'finder candidate' for r in rows)
+    if n_finder:
+        result['finder'] = {
+            'finder precision (aircraft only)': round(lab.count('aircraft') / n_finder, 3),
+            'finder precision (incl. probable)': round((lab.count('aircraft') + lab.count('probable')) / n_finder, 3)}
+    inputs = [('as-is', False)]
+    if any(r['blue_x'] != '' for r in rows):
+        inputs.append(('realigned', True))
+    for name, realign in inputs:
         result[name] = summarise(scores(model, rows, a.data, realign, a.device), rows)
     print(json.dumps(result, indent=2))
     if a.json:

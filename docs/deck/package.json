@@ -1,0 +1,6 @@
+{
+  "name": "aircraft-in-flight-review-deck",
+  "private": true,
+  "description": "Generator for docs/aircraft-in-flight-review.pptx",
+  "dependencies": { "pptxgenjs": "4.0.1" }
+}

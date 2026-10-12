@@ -15,19 +15,30 @@ Two datasets with identical crops and labels are written:
              Static scenery comes out grey; anything moving relative to it
              leaves a coloured fringe the detector can learn from.
 
-Train and val are split by flight, so no flight appears in both.
+Train and val are split by flight, so no flight appears in both. The split is a
+hash of the flight id, so a flight that appears in more than one AOT part lands
+in the same split every time.
 
 Example:
     curl -o groundtruth.csv https://airborne-obj-detection-challenge-training.s3.amazonaws.com/part1/ImageSets/groundtruth.csv
     python -m sky.prepare_aot groundtruth.csv data/aot --train 1200 --val 300
+
+    # test set from part2: every flight is unseen by a model trained on part1
+    python -m sky.prepare_aot part2.csv data/aot_part2 --part part2 --train 0 --val 1500 --val-fraction 1
+
+    # more training data from part3, keeping part2's flights out of it
+    python -m sky.prepare_aot part3.csv data/aot_part3 --part part3 --train 6000 --val 0 --exclude-flights part2.csv
 """
 
 import argparse
 import csv
 import hashlib
+import http.client
 import json
 import os
 import re
+import time
+import urllib.error
 import urllib.request
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -39,7 +50,7 @@ from . import temporal
 
 BUCKET = 'https://airborne-obj-detection-challenge-training.s3.amazonaws.com'
 CLASSES = ['airplane', 'helicopter', 'bird', 'drone', 'unknown']
-CLASS_OF = {'Airplane': 0, 'Helicopter': 1, 'Bird': 2, 'Flock': 2, 'Drone': 3, 'Airborne': 4}
+CLASS_OF = {'Airplane': 0, 'Helicopter': 1, 'Bird': 2, 'BIrd': 2, 'Flock': 2, 'Drone': 3, 'Airborne': 4}  # 'BIrd': typo in part2
 AIRCRAFT = {0, 1, 3}
 
 
@@ -63,6 +74,12 @@ def load_groundtruth(path):
                     'range_m': float(r['range_distance_m']) if r['range_distance_m'] else None,
                 })
     return flights
+
+
+def flight_ids(path):
+    """Flight ids in a groundtruth.csv."""
+    with open(path) as f:
+        return {r['flight_id'] for r in csv.DictReader(f)}
 
 
 def split_of(flight, val_fraction):
@@ -98,10 +115,24 @@ def plan_samples(flights, split, n, k, rng, per_flight=6, min_gap=20, negative_f
     return pos_pool[:n - n_neg] + neg_pool[:n_neg]
 
 
-def fetch(flight, img_name):
-    url = '%s/part1/Images/%s/%s' % (BUCKET, flight, img_name)
-    with urllib.request.urlopen(url, timeout=60) as r:
-        buf = np.frombuffer(r.read(), np.uint8)
+def image_url(part, flight, img_name):
+    return '%s/%s/Images/%s/%s' % (BUCKET, part, flight, img_name)
+
+
+def fetch(part, flight, img_name, retries=3, backoff=2.0):
+    """Download one frame. Retries connection resets and timeouts; a missing frame (HTTP 404) fails at once."""
+    url = image_url(part, flight, img_name)
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=60) as r:
+                buf = np.frombuffer(r.read(), np.uint8)
+            break
+        except urllib.error.HTTPError:
+            raise
+        except (OSError, http.client.HTTPException):  # URLError, timeouts and resets are OSErrors
+            if attempt == retries:
+                raise
+            time.sleep(backoff * 2 ** attempt)
     img = cv2.imdecode(buf, cv2.IMREAD_GRAYSCALE)
     if img is None:
         raise IOError('could not decode %s' % url)
@@ -139,11 +170,11 @@ def crop_labels(objs, x, y, size, min_px=2):
     return lines, meta
 
 
-def build_sample(job, flights, out, k, size):
+def build_sample(job, flights, out, k, size, part='part1'):
     (fid, frame, kind), split, seed = job
     rng = np.random.default_rng(seed)
     fl = flights[fid]
-    imgs = [fetch(fid, fl['frames'][f]) for f in (frame - k, frame, frame + k)]
+    imgs = [fetch(part, fid, fl['frames'][f]) for f in (frame - k, frame, frame + k)]
     h, w = imgs[1].shape
     objs = fl['objects'].get(frame, [])
     x, y = crop_window(objs, w, h, size, rng)
@@ -170,8 +201,10 @@ def write_yaml(out, variant):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument('groundtruth', help='AOT part1 groundtruth.csv')
+    p.add_argument('groundtruth', help='AOT groundtruth.csv of the part given by --part')
     p.add_argument('out')
+    p.add_argument('--part', default='part1', choices=['part1', 'part2', 'part3'],
+                   help='AOT part the groundtruth belongs to; frames are fetched from it')
     p.add_argument('--train', type=int, default=1200, help='training crops')
     p.add_argument('--val', type=int, default=300, help='validation crops')
     p.add_argument('--val-fraction', type=float, default=0.2, help='fraction of flights held out')
@@ -181,10 +214,18 @@ def main(argv=None):
     p.add_argument('--oversample', type=float, default=1.35,
                    help='plan extra samples; some AOT frames are missing from the bucket')
     p.add_argument('--seed', type=int, default=0)
+    p.add_argument('--exclude-flights', nargs='*', default=[], metavar='CSV',
+                   help='skip flights listed in these groundtruth.csv files. AOT parts share flights '
+                        '(part3 has 352 of part1\'s and 364 of part2\'s), so exclude a test part here')
     a = p.parse_args(argv)
 
     rng = np.random.default_rng(a.seed)
     flights = load_groundtruth(a.groundtruth)
+    excluded = set().union(*(flight_ids(path) for path in a.exclude_flights))
+    for fid in excluded & set(flights):
+        del flights[fid]
+    if a.exclude_flights:
+        print('excluded %d flights listed in %s' % (len(excluded), ', '.join(a.exclude_flights)))
     for fid, fl in flights.items():
         fl['split'] = split_of(fid, a.val_fraction)
     jobs = []
@@ -197,7 +238,7 @@ def main(argv=None):
 
     meta, failed = {}, 0
     with ThreadPoolExecutor(a.workers) as ex:
-        futures = [ex.submit(build_sample, j, flights, a.out, a.k, a.size) for j in jobs]
+        futures = [ex.submit(build_sample, j, flights, a.out, a.k, a.size, a.part) for j in jobs]
         for i, fut in enumerate(futures):
             try:
                 name, split, m = fut.result()

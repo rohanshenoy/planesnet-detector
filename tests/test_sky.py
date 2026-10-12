@@ -95,3 +95,69 @@ def test_clip_outputs_raw_online_offline():
     assert online['recall'] == pytest.approx(0.8)      # frames 0-1 wait for confirmation
     assert online['false_alarms_per_frame'] == 0
     assert offline['recall'] == 1.0 and offline['precision'] == 1.0
+
+
+def test_prepare_aot_reads_any_part_and_part2_column_order(tmp_path):
+    from sky.prepare_aot import image_url, load_groundtruth
+    assert image_url('part2', 'abc', 'f.png').endswith('/part2/Images/abc/f.png')
+    # part2's groundtruth.csv orders its columns differently and spells one bird 'BIrd'
+    csv_path = tmp_path / 'gt.csv'
+    csv_path.write_text(
+        ',time,id,flight_id,img_name,frame,range_distance_m,is_above_horizon,size_width,size_height,'
+        'gt_left,gt_top,gt_right,gt_bottom\n'
+        '0,1,Airplane1,fl,a.png,3,900.0,1.0,2448,2048,10,20,16,26\n'
+        '1,1,BIrd2,fl,a.png,3,50.0,-1.0,2448,2048,100,200,104,204\n')
+    fl = load_groundtruth(str(csv_path))['fl']
+    assert fl['frames'] == {3: 'a.png'}
+    assert [o['cls'] for o in fl['objects'][3]] == [0, 2]
+
+
+def test_split_is_stable_across_parts_and_exclusion(tmp_path):
+    from sky.prepare_aot import flight_ids, split_of
+    # the split is a hash of the flight id alone, so a flight shared by two parts keeps its side
+    val = sum(split_of('%032x' % (i * 7919), 0.2) == 'val' for i in range(2000))
+    assert 300 < val < 500
+    p = tmp_path / 'gt.csv'
+    p.write_text(',time,flight_id,img_name,frame,id\n0,1,f1,a.png,1,\n1,2,f2,b.png,1,\n2,3,f1,c.png,2,\n')
+    assert flight_ids(str(p)) == {'f1', 'f2'}
+
+
+def test_fetch_retries_transient_errors_but_not_missing_frames(monkeypatch):
+    import io
+    import urllib.error
+    import cv2
+    from sky import prepare_aot
+    png = cv2.imencode('.png', np.full((4, 6), 7, np.uint8))[1].tobytes()
+    calls = []
+
+    def flaky(url, timeout):
+        calls.append(url)
+        if len(calls) < 3:
+            raise ConnectionResetError(54, 'Connection reset by peer')
+        return io.BytesIO(png)
+    monkeypatch.setattr(prepare_aot.urllib.request, 'urlopen', flaky)
+    monkeypatch.setattr(prepare_aot.time, 'sleep', lambda s: None)
+    assert prepare_aot.fetch('part1', 'fl', 'a.png').shape == (4, 6) and len(calls) == 3
+
+    def missing(url, timeout):
+        calls.append(url)
+        raise urllib.error.HTTPError(url, 404, 'Not Found', {}, None)
+    calls.clear()
+    monkeypatch.setattr(prepare_aot.urllib.request, 'urlopen', missing)
+    with pytest.raises(urllib.error.HTTPError):
+        prepare_aot.fetch('part1', 'fl', 'a.png')
+    assert len(calls) == 1
+
+
+def test_download_clip_fetches_frames_from_the_given_part(tmp_path, monkeypatch):
+    from sky import evaluate_clips
+    calls = []
+
+    def fake_fetch(part, flight, img_name):
+        calls.append((part, flight, img_name))
+        return np.zeros((4, 4), np.uint8)
+    monkeypatch.setattr(evaluate_clips, 'fetch', fake_fetch)
+    flights = {'fl': {'frames': {f: 'f%d.png' % f for f in range(10)}}}
+    paths = evaluate_clips.download_clip(flights, 'fl', 3, 4, 1, str(tmp_path / 'clip'), workers=2, part='part2')
+    assert sorted(paths) == list(range(2, 8))
+    assert {c[0] for c in calls} == {'part2'} and len(calls) == 6
